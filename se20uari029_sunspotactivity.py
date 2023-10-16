@@ -1,33 +1,52 @@
-import pandas as pd
+%matplotlib inline
 import numpy as np
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-
-# Load the sunspot activity data
-data = pd.read_csv('sunspot_activity.csv')
-
-# Split the data into training and test sets
-X_train = data['SunSpot Activity'][:int(0.8 * len(data))]
-y_train = data['SunSpot Activity'][:int(0.8 * len(data))]
-X_test = data['SunSpot Activity'][int(0.8 * len(data)):]
-y_test = data['SunSpot Activity'][int(0.8 * len(data)):]
-
-# Create a SARIMA model
-model = SARIMAX(X_train, order=(1, 1, 1), seasonal_order=(1, 1, 1, 12))
-
-# Train the model
-model_fit = model.fit()
-
-# Make predictions on the test set
-y_pred = model_fit.predict(start=int(0.8 * len(data)), end=len(data))
-
-# Evaluate the model's performance
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-print('RMSE:', rmse)
-
-# Plot the actual and predicted sunspot activity
+import pandas as pd
+import os
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
+plt.style.use('seaborn')
+plt.rcParams['figure.figsize'] = [16, 9]
+from statsmodels.tsa import stattools
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from timeit import default_timer as timers
 
-plt.plot(X_train, label='Training Data')
-plt.plot(y_pred, label='Predicted Data')
-plt.legend()
+df = pd.read_csv('/content/sunspot_data.csv', delimiter=',', na_values=['-1'])
+df.dataframeName = 'sunspot_data.csv'
+del(df['Unnamed: 0'])
+df.columns = ['year', 'month', 'day', 'fraction','sunspots', 'sdt', 'obs','indicator']
+df.head(-5)
+
+
+df['time']=df[['year', 'month', 'day']].apply(lambda s: pd.datetime(*s),axis = 1)
+df.index = df['time']
+df['sunspots'].interpolate(method='linear', inplace=True)
+ts = pd.Series(data=df.sunspots, index=df.index)
+#ts = ts['1900-01-01':]
+ts_month = ts.resample('MS').mean()
+ts_quarter = ts.resample('Q').mean()
+ts_quarter.plot()
+plt.show()
+plot_pacf(ts_quarter,lags=100,title='Sunspots')
+plt.show()
+plot_acf(ts_quarter,lags=100,title='Sunspots')
+plt.show()
+from statsmodels.tsa.stattools import adfuller
+def printADFTest(serie):
+    result = adfuller(serie, autolag='AIC')
+    print("ADF Statistic %F" % (result[0]))
+    print(f'p-value: {result[1]}')
+    for key, value in result[4].items():
+        print('Critial Values:')
+        print(f'   {key}, {value}')
+    print('\n')
+#d = 0
+printADFTest(ts_quarter)
+#d = 1
+#printADFTest(ts_quarter.diff(1).dropna())
+model = sm.tsa.statespace.SARIMAX(ts_quarter, trend='n', order=(3,0,10), seasonal_order=(1,1,0,43))
+results = model.fit()
+print(results.summary())
+forecast = results.predict(start = ts_quarter.index[-2], end= ts_quarter.index[-2] + pd.DateOffset(months=240), dynamic= True)
+ts_quarter.plot()
+forecast.plot()
 plt.show()
